@@ -1,68 +1,59 @@
 import java.util.*;
 public class BookMyStayApp {
     public static void main(String[] args) {
-        BookingHistory history = new BookingHistory();
-        BookingReportService reportService = new BookingReportService();
-        Reservation r1 = new Reservation("RES101", "Alice", 2500);
-        Reservation r2 = new Reservation("RES102", "Bob", 4000);
-        Reservation r3 = new Reservation("RES103", "Charlie", 3200);
-        history.addReservation(r1);
-        history.addReservation(r2);
-        history.addReservation(r3);
-        System.out.println("=== Booking History ===");
-        for (Reservation r : history.getAllReservations()) {
-            System.out.println(r);
+        BookingService bookingService = new BookingService();
+        try {
+            bookingService.bookRoom("RES201", "Alice", "DELUXE", 2);
+            bookingService.bookRoom("RES202", "Bob", "PENTHOUSE", 1);
+            bookingService.bookRoom("RES203", "Charlie", "STANDARD", 10);
+        } catch (InvalidBookingException e) {
+            System.out.println("Booking Failed: " + e.getMessage());
         }
-        System.out.println("\n=== Booking Report ===");
-        reportService.printSummary(history);
+        System.out.println("\nSystem still running...");
     }
 }
-class Reservation {
-    private String reservationId;
-    private String guestName;
-    private double totalCost;
-    public Reservation(String reservationId, String guestName, double totalCost) {
-        this.reservationId = reservationId;
-        this.guestName = guestName;
-        this.totalCost = totalCost;
+class BookingService {
+    private Map<String, Integer> inventory = new HashMap<>();
+    public BookingService() {
+        inventory.put("STANDARD", 5);
+        inventory.put("DELUXE", 3);
+        inventory.put("SUITE", 2);
     }
-    public String getReservationId() {
-        return reservationId;
+    public void bookRoom(String reservationId, String guestName,
+                         String roomType, int quantity)
+            throws InvalidBookingException {
+        validateRoomType(roomType);
+        validateQuantity(quantity);
+        validateAvailability(roomType, quantity);
+        inventory.put(roomType, inventory.get(roomType) - quantity);
+        System.out.println("Booking Confirmed: " + reservationId +
+                " | Guest: " + guestName +
+                " | Room: " + roomType +
+                " | Qty: " + quantity);
     }
-    public String getGuestName() {
-        return guestName;
+    private void validateRoomType(String roomType) throws InvalidBookingException {
+        if (!inventory.containsKey(roomType)) {
+            throw new InvalidBookingException("Invalid room type: " + roomType);
+        }
     }
-    public double getTotalCost() {
-        return totalCost;
+    private void validateQuantity(int quantity) throws InvalidBookingException {
+        if (quantity <= 0) {
+            throw new InvalidBookingException("Quantity must be greater than zero.");
+        }
     }
-    @Override
-    public String toString() {
-        return "Reservation ID: " + reservationId +
-                ", Guest: " + guestName +
-                ", Cost: ₹" + totalCost;
+    private void validateAvailability(String roomType, int quantity)
+            throws InvalidBookingException {
+        int available = inventory.get(roomType);
+        if (available < quantity) {
+            throw new InvalidBookingException(
+                    "Not enough rooms available. Requested: " + quantity +
+                            ", Available: " + available
+            );
+        }
     }
 }
-class BookingHistory {
-    private List<Reservation> reservations = new ArrayList<>();
-    public void addReservation(Reservation reservation) {
-        reservations.add(reservation);
-    }
-    public List<Reservation> getAllReservations() {
-        return new ArrayList<>(reservations);
-    }
-}
-class BookingReportService {
-    public void printSummary(BookingHistory history) {
-        List<Reservation> reservations = history.getAllReservations();
-        int totalBookings = reservations.size();
-        double totalRevenue = 0;
-        for (Reservation r : reservations) {
-            totalRevenue += r.getTotalCost();
-        }
-        System.out.println("Total Bookings: " + totalBookings);
-        System.out.println("Total Revenue: ₹" + totalRevenue);
-        if (totalBookings > 0) {
-            System.out.println("Average Booking Value: ₹" + (totalRevenue / totalBookings));
-        }
+class InvalidBookingException extends Exception {
+    public InvalidBookingException(String message) {
+        super(message);
     }
 }
