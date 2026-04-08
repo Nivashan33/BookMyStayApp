@@ -1,57 +1,85 @@
+import java.io.*;
 import java.util.*;
 public class BookMyStayApp {
-    public static void main(String[] args) {
-        ConcurrentBookingProcessor processor = new ConcurrentBookingProcessor();
-        Thread t1 = new Thread(() -> processor.processBooking("RES401", "Alice", "DELUXE"));
-        Thread t2 = new Thread(() -> processor.processBooking("RES402", "Bob", "DELUXE"));
-        Thread t3 = new Thread(() -> processor.processBooking("RES403", "Charlie", "DELUXE"));
-        Thread t4 = new Thread(() -> processor.processBooking("RES404", "David", "DELUXE"));
-        t1.start();
-        t2.start();
-        t3.start();
-        t4.start();
-    }
-}
-class ConcurrentBookingProcessor {
+    private static final String DATA_FILE = "bookmystay_state.dat";
     private Map<String, Integer> inventory = new HashMap<>();
-    private Queue<BookingRequest> bookingQueue = new LinkedList<>();
-    public ConcurrentBookingProcessor() {
-        inventory.put("DELUXE", 2);
+    private List<String> bookings = new ArrayList<>();
+    private PersistenceService persistenceService = new PersistenceService();
+    public static void main(String[] args) {
+        BookMyStayApp app = new BookMyStayApp();
+        app.restoreState();
+        app.addRoomType("Deluxe", 10);
+        app.addRoomType("Suite", 5);
+        app.bookRoom("Deluxe");
+        app.bookRoom("Suite");
+        app.saveState();
+        System.out.println("System shut down safely with persisted state.");
     }
-    public void processBooking(String reservationId, String guestName, String roomType) {
-        BookingRequest request = new BookingRequest(reservationId, guestName, roomType);
-        synchronized (bookingQueue) {
-            bookingQueue.add(request);
-        }
-        handleRequest();
+    public void addRoomType(String roomType, int count) {
+        inventory.put(roomType, inventory.getOrDefault(roomType, 0) + count);
+        System.out.println("Added " + count + " rooms to " + roomType);
     }
-    private void handleRequest() {
-        BookingRequest request;
-        synchronized (bookingQueue) {
-            if (bookingQueue.isEmpty()) return;
-            request = bookingQueue.poll();
+    public void bookRoom(String roomType) {
+        if (!inventory.containsKey(roomType)) {
+            System.out.println("Room type does not exist.");
+            return;
         }
-        synchronized (inventory) {
-            int available = inventory.getOrDefault(request.roomType, 0);
-            if (available > 0) {
-                inventory.put(request.roomType, available - 1);
-                System.out.println(Thread.currentThread().getName() +
-                        " SUCCESS: " + request.reservationId +
-                        " | Remaining: " + (available - 1));
-            } else {
-                System.out.println(Thread.currentThread().getName() +
-                        " FAILED: No rooms available for " + request.reservationId);
-            }
+        int available = inventory.get(roomType);
+        if (available <= 0) {
+            System.out.println("No rooms available for " + roomType);
+            return;
+        }
+        inventory.put(roomType, available - 1);
+        bookings.add(roomType);
+        System.out.println("Booking successful for " + roomType);
+    }
+    public void saveState() {
+        System.out.println("Preparing system for shutdown...");
+        SystemState state = new SystemState(inventory, bookings);
+        persistenceService.save(DATA_FILE, state);
+        System.out.println("State successfully persisted.");
+    }
+    public void restoreState() {
+        System.out.println("System starting... Restoring state.");
+        SystemState state = persistenceService.load(DATA_FILE);
+        if (state != null) {
+            inventory = state.inventory;
+            bookings = state.bookings;
+            System.out.println("State restored successfully.");
+        } else {
+            System.out.println("No valid persisted state found. Starting fresh.");
         }
     }
 }
-class BookingRequest {
-    String reservationId;
-    String guestName;
-    String roomType;
-    public BookingRequest(String reservationId, String guestName, String roomType) {
-        this.reservationId = reservationId;
-        this.guestName = guestName;
-        this.roomType = roomType;
+class SystemState implements Serializable {
+    private static final long serialVersionUID = 1L;
+    Map<String, Integer> inventory;
+    List<String> bookings;
+    public SystemState(Map<String, Integer> inventory, List<String> bookings) {
+        this.inventory = new HashMap<>(inventory);
+        this.bookings = new ArrayList<>(bookings);
+    }
+}
+class PersistenceService {
+    public void save(String fileName, SystemState state) {
+        try (ObjectOutputStream out =
+                     new ObjectOutputStream(new FileOutputStream(fileName))) {
+            out.writeObject(state);
+        } catch (IOException e) {
+            System.out.println("Failed to persist state: " + e.getMessage());
+        }
+    }
+    public SystemState load(String fileName) {
+        File file = new File(fileName);
+        if (!file.exists()) {
+            return null;
+        }
+        try (ObjectInputStream in =
+                     new ObjectInputStream(new FileInputStream(file))) {
+            return (SystemState) in.readObject();
+        } catch (IOException | ClassNotFoundException e) {
+            System.out.println("Persistence file corrupted or unreadable.");
+            return null;
+        }
     }
 }
